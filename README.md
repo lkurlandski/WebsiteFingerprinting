@@ -2,6 +2,7 @@
 Use deep learning to perform website fingerprinting.
 
 ## Setup
+
 ```mkdir outputs data```
 
 ```mv full.zip ./data/full.zip```
@@ -9,6 +10,16 @@ Use deep learning to perform website fingerprinting.
 ```unzip data/full.zip ./data/full```
 
 ```conda env create -f environment.yml```
+
+
+If you are having trouble getting GPU support with TensorFlow, try
+
+```pip uninstall black```
+
+```conda uninstall black```
+
+```conda install tensorflow-gpu```
+
 
 ## Usage
 
