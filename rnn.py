@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import typing as tp
 
+import numpy as np
+from sklearn.metrics import roc_auc_score
 from sklearn.metrics import classification_report
 import torch
 from torch import nn, optim, Tensor
@@ -66,7 +68,17 @@ class RNNClassifier(nn.Module):
             raise ValueError(f"Invalid {architecture=}")
 
         self.d = 2 if self.rnn.bidirectional else 1
-        self.mlp = nn.Linear(hidden_size * self.d, num_classes)
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_size * self.d, 512),
+            nn.ReLU(), 
+            nn.BatchNorm1d(512),
+            nn.Dropout(.7),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.BatchNorm1d(512),
+            nn.Dropout(.5),
+            nn.Linear(512, num_classes),
+        )  # Sirinam et al.
 
     def forward(self, x: Tensor) -> Tensor:
         initial = self.get_initial_state(x)
@@ -159,4 +171,9 @@ def evaluate_rnn_classifier(
     loss /= len(loader)
     report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
     report["loss"] = loss
+    try:
+        r = roc_auc_score(y_true, y_pred)
+    except Exception:
+        r = np.NaN
+    report["auroc"] = r
     return report

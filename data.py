@@ -2,6 +2,7 @@
 Data loading and processing utilities.
 """
 
+from pathlib import Path
 import typing as tp
 
 import numpy as np
@@ -35,6 +36,26 @@ def get_data(
                     directions = directions[:max_length]
                 data.append(directions + [site])
     return np.array(data)
+
+
+def read_wf_file(path: Path, max_length: int = 2000) -> np.ndarray:
+    with open(path, "r", encoding="utf-8") as file_pt:
+        directions = [0] * max_length
+        for i, line in enumerate(file_pt):
+            if i == max_length - 1:
+                break
+            x = line.strip().split("\t")
+            directions[i] = 1 if float(x[1]) > 0 else -1
+        return np.array(directions)
+
+
+def get_all_data(path: tp.Union[Path, str]) -> tp.Tuple[np.ndarray, np.array]:
+    y = []
+    X = []
+    for p in Path(path).iterdir():
+        y.append(int(p.name.split("-")[0]))
+        X.append(read_wf_file(p))
+    return np.array(X), np.array(y)
 
 
 class WFDataset(Dataset):

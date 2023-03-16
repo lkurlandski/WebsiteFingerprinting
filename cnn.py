@@ -2,6 +2,7 @@
 Convolutional Neural Network classifier.
 """
 
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Dense, Flatten, Dropout, BatchNormalization
 from tensorflow.keras.callbacks import TensorBoard, EarlyStopping
@@ -61,13 +62,22 @@ class CNN:
         model.add(MaxPooling1D(4))
 
         model.add(Flatten())
-        model.add(Dense(512))
-        model.add(Dense(512))
-        model.add(Dropout(dropout_rate))
+        model.add(Dense(512, activation="relu"))  # Sirinam et al.
+        model.add(BatchNormalization())
+        model.add(Dropout(0.7))
+        model.add(Dense(512, activation="relu"))
+        model.add(BatchNormalization())
+        model.add(Dropout(0.5))
         model.add(Dense(num_classes, activation="softmax"))
 
         opti = optimizer
-        model.compile(loss="categorical_crossentropy", optimizer=opti, metrics=["accuracy"])
+        metrics = [
+                tf.keras.metrics.Accuracy(),
+                tf.keras.metrics.AUC(),
+                tf.keras.metrics.Precision(),
+                tf.keras.metrics.Recall(),
+                ]
+        model.compile(loss="categorical_crossentropy", optimizer=opti, metrics=metrics)
         self.model = model
 
     def fit(

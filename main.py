@@ -7,8 +7,6 @@ import json
 from pathlib import Path
 from pprint import pformat
 import shutil
-import sys
-import typing as tp
 
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -18,15 +16,16 @@ from tensorflow.keras.utils import to_categorical
 import torch
 from torch import nn
 from torch import optim
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import DataLoader
 
 from cnn import CNN
-from data import get_collate_fn, get_data, WFDataset
+from data import get_collate_fn, get_all_data, WFDataset
 from rnn import evaluate_rnn_classifier, train_rnn_classifier, RNNClassifier
 from utils import get_highest_file, EarlyStopper
 
 
-def get_torch_optimizer(optimizer: str, model: nn.Module, **kwargs) -> optim.Optimizer:
+# No weight decay, Rimmer et al.
+def get_torch_optimizer(model: nn.Module, optimizer: str, **kwargs) -> optim.Optimizer:
     if optimizer == "Adam":
         return optim.Adam(model.parameters(), **kwargs)
     if optimizer == "Adamax":
@@ -83,13 +82,12 @@ def rnns(
             path_models.mkdir()
             path_reports.mkdir()
         # Train the model for a number of epochs
-        optimizer_ = get_torch_optimizer(optimizer, model)
         early_stopper = EarlyStopper(patience=PATIENCE) if PATIENCE is not None else None
         train_rnn_classifier(
             model,
             tr_loader,
             vl_loader,
-            optimizer_,
+            optimizer,
             path_models,
             path_reports,
             epoch_e=EPOCHS,
@@ -105,6 +103,8 @@ def rnns(
     print(f"{ts_X.shape=}")
     print(f"{ts_y.shape=}")
 
+    num_sites = np.unique(tr_y).shape[0]
+    
     tr_dataset = WFDataset(tr_X, tr_y, condense=True)
     vl_dataset = WFDataset(vl_X, vl_y, condense=True)
     ts_dataset = WFDataset(ts_X, ts_y, condense=True)
@@ -114,6 +114,7 @@ def rnns(
 
     order = (
         "optimizer",
+        "learning_rate",
         "dropout",
         "architecture",
         "hidden_size",
@@ -121,7 +122,7 @@ def rnns(
         "bidirectional",
     )
     order = {key: idx for idx, key in enumerate(order)}
-    for combo in product(*[PARAMS_CNN[k] for k in order]):
+    for combo in product(*[PARAMS_RNN[k] for k in order]):
         try:
             kwargs = {
                 "architecture": combo[order["architecture"]],
@@ -129,7 +130,7 @@ def rnns(
                 "num_layers": combo[order["num_layers"]],
                 "bidirectional": combo[order["bidirectional"]],
                 "dropout": combo[order["dropout"]],
-                "num_classes": NUM_SITES,
+                "num_classes": num_sites,
             }
             print(f"{'-' * 78}\n{pformat(kwargs)}")
             model = RNNClassifier(**kwargs)
@@ -139,8 +140,9 @@ def rnns(
             path_models = path / "models"
             path_reports = path / "reports"
             if TRAIN_RNN:
+                optimizer = get_torch_optimizer(model, combo[order["optimizer"]], lr=combo[order["learning_rate"]])
                 single_run_train()
-            if TEST_RNN:
+            if EVAL_RNN:
                 single_run_test()
         except Exception as e:
             if ERRORS == "raise":
@@ -158,6 +160,9 @@ def cnns(
     ts_X: np.ndarray,
     ts_y: np.ndarray,
 ) -> None:
+    num_sites = np.unique(tr_y).shape[0]
+    num_features = tr_X.shape[1]
+    
     tr_X = np.expand_dims(tr_X, axis=2) if tr_X.ndim < 3 else tr_X
     vl_X = np.expand_dims(vl_X, axis=2) if vl_X.ndim < 3 else vl_X
     ts_X = np.expand_dims(ts_X, axis=2) if ts_X.ndim < 3 else ts_X
@@ -172,9 +177,9 @@ def cnns(
     print(f"{ts_X.shape=}")
     print(f"{ts_y.shape=}")
 
-    num_features = tr_X.shape[1] if tr_X is not None else ts_X.shape[1]
     order = (
         "optimizer",
+        "learning_rate",
         "dropout_rate",
         "architecture",
         "filter_size",
@@ -185,11 +190,11 @@ def cnns(
         try:
             kwargs = {
                 "num_features": num_features,
-                "num_classes": NUM_SITES,
+                "num_classes": num_sites,
                 "filter_size": combo[order["filter_size"]],
                 "act_func": combo[order["act_func"]],
                 "dropout_rate": combo[order["dropout_rate"]],
-                "optimizer": get_tensorflow_optimizer(combo[order["optimizer"]]),
+                "optimizer": get_tensorflow_optimizer(combo[order["optimizer"]], learning_rate=combo[order["learning_rate"]]),
             }
             print(f"{'-' * 78}\n{pformat(kwargs)}")
             model = CNN(**kwargs)
@@ -222,10 +227,7 @@ def main() -> None:
     tf.random.set_seed(SEED)
     np.random.seed(SEED)
 
-    raw = get_data(DATA_PATH, NUM_SITES, NUM_INSTANCES)
-    X = raw[:, : raw.shape[1] - 1]
-    y = raw[:, -1]
-
+    X, y = get_all_data(DATA_PATH)
     tr_vl_X, ts_X, tr_vl_y, ts_y = train_test_split(X, y, test_size=int(TS * len(y)), random_state=SEED)
     tr_X, vl_X, tr_y, vl_y = train_test_split(tr_vl_X, tr_vl_y, test_size=int(VL * len(y)), random_state=SEED)
 
@@ -234,7 +236,6 @@ def main() -> None:
     print(f"n_classes={np.unique(y).shape[0]}")
     print(f"{X.shape=}")
     print(f"{y.shape=}")
-
     print(f"{tr_X.shape=}")
     print(f"{tr_y.shape=}")
     print(f"{vl_X.shape=}")
@@ -252,30 +253,29 @@ def main() -> None:
 if __name__ == "__main__":
     # Hyperparameters
     PARAMS_RNN = {
-        "architecture": ["LSTM"],
-        "hidden_size": [64],
-        "num_layers": [3],
+        "architecture": ["LSTM", "GRU"],
+        "hidden_size": [128],  # Rimmer et al., Shusterman et al.
+        "num_layers": [4],
         "bidirectional": [False],
-        "dropout": [0.0],
-        "optimizer": ["Adam"],
+        "dropout": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+        "optimizer": ["Adam", "Adamax", "SGD", "RMSprop"],
+        "learning_rate": [0.001, 0.01, 0.1],  # Oh et al., Rimmer et al.
     }
     PARAMS_CNN = {
         "architecture": ["CNN"],  # lazy
         "filter_size": [4],
-        "act_func": ["relu", "elu"],
-        "dropout_rate": [0.2],
-        "optimizer": ["Adam"],
+        "act_func": ["elu"],  # LSTMs don't support GPU acceleration with other activation functions
+        "dropout_rate": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+        "optimizer": ["Adam", "Adamax", "SGD", "RMSprop"],  # Rimmer et al.
+        "learning_rate": [0.001, 0.01, 0.1],
     }
-    TR, VL, TS = 0.8, 0.1, 0.1
-    assert sum((TR, VL, TS)) == 1, f"Train/Validation/Test split should sum to 1, not {sum((TR, VL, TS))=}"
-    BATCH_SIZE = 128
-    EPOCHS = 3
-    PATIENCE = 3
+    TR, VL, TS = 0.90, 0.05, 0.05  # Rimmer et al.
+    BATCH_SIZE = 128  # Rimmer et al.
+    EPOCHS = 100  # Our own thing
+    PATIENCE = 3  # Rimmer et al., Shusterman et al.
 
     # Experiment
     DATA_PATH = "./data/full/"
-    NUM_SITES = 95
-    NUM_INSTANCES = 100
     SEED = 0
     DEVICE_PT = "cuda:1"  # "cpu" or "cuda:0"
     DEVICE_TF = "/GPU:1"  # "/device:CPU:0" or "/GPU:0"
@@ -286,9 +286,9 @@ if __name__ == "__main__":
     CLEAN_CNN = True
 
     # Flags
-    ERRORS = "raise"
-    TRAIN_RNN = False
-    EVAL_RNN = False
+    ERRORS = "warn"
+    TRAIN_RNN = True
+    EVAL_RNN = True
     TRAIN_CNN = True
     EVAL_CNN = True
 
