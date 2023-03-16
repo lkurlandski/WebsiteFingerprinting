@@ -2,7 +2,7 @@
 Train and evaluate models.
 """
 
-from itertools import product
+from itertools import chain, product
 import json
 from pathlib import Path
 from pprint import pformat
@@ -24,7 +24,6 @@ from rnn import evaluate_rnn_classifier, train_rnn_classifier, RNNClassifier
 from utils import get_highest_file, EarlyStopper
 
 
-# No weight decay, Rimmer et al.
 def get_torch_optimizer(model: nn.Module, optimizer: str, **kwargs) -> optim.Optimizer:
     if optimizer == "Adam":
         return optim.Adam(model.parameters(), **kwargs)
@@ -104,7 +103,7 @@ def rnns(
     print(f"{ts_y.shape=}")
 
     num_sites = np.unique(tr_y).shape[0]
-    
+
     tr_dataset = WFDataset(tr_X, tr_y, condense=True)
     vl_dataset = WFDataset(vl_X, vl_y, condense=True)
     ts_dataset = WFDataset(ts_X, ts_y, condense=True)
@@ -151,7 +150,6 @@ def rnns(
                 print(f"{'-' * 78}\n{e}{'-' * 78}")
 
 
-# TODO: save models to faciliate reevaluating them without needing to train again
 def cnns(
     tr_X: np.ndarray,
     tr_y: np.ndarray,
@@ -162,7 +160,7 @@ def cnns(
 ) -> None:
     num_sites = np.unique(tr_y).shape[0]
     num_features = tr_X.shape[1]
-    
+
     tr_X = np.expand_dims(tr_X, axis=2) if tr_X.ndim < 3 else tr_X
     vl_X = np.expand_dims(vl_X, axis=2) if vl_X.ndim < 3 else vl_X
     ts_X = np.expand_dims(ts_X, axis=2) if ts_X.ndim < 3 else ts_X
@@ -194,7 +192,9 @@ def cnns(
                 "filter_size": combo[order["filter_size"]],
                 "act_func": combo[order["act_func"]],
                 "dropout_rate": combo[order["dropout_rate"]],
-                "optimizer": get_tensorflow_optimizer(combo[order["optimizer"]], learning_rate=combo[order["learning_rate"]]),
+                "optimizer": get_tensorflow_optimizer(
+                    combo[order["optimizer"]], learning_rate=combo[order["learning_rate"]]
+                ),
             }
             print(f"{'-' * 78}\n{pformat(kwargs)}")
             model = CNN(**kwargs)
@@ -251,45 +251,63 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Hyperparameters
+    # Hyperparameters for the RNNs (see below for an idea of valid values)
     PARAMS_RNN = {
         "architecture": ["LSTM", "GRU"],
-        "hidden_size": [128],  # Rimmer et al., Shusterman et al.
+        "hidden_size": [128],
         "num_layers": [4],
         "bidirectional": [False],
         "dropout": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
         "optimizer": ["Adam", "Adamax", "SGD", "RMSprop"],
-        "learning_rate": [0.001, 0.01, 0.1],  # Oh et al., Rimmer et al.
-    }
-    PARAMS_CNN = {
-        "architecture": ["CNN"],  # lazy
-        "filter_size": [4],
-        "act_func": ["elu"],  # LSTMs don't support GPU acceleration with other activation functions
-        "dropout_rate": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
-        "optimizer": ["Adam", "Adamax", "SGD", "RMSprop"],  # Rimmer et al.
         "learning_rate": [0.001, 0.01, 0.1],
     }
-    TR, VL, TS = 0.90, 0.05, 0.05  # Rimmer et al.
-    BATCH_SIZE = 128  # Rimmer et al.
-    EPOCHS = 100  # Our own thing
-    PATIENCE = 3  # Rimmer et al., Shusterman et al.
 
-    # Experiment
-    DATA_PATH = "./data/full/"
-    SEED = 0
-    DEVICE_PT = "cuda:1"  # "cpu" or "cuda:0"
-    DEVICE_TF = "/GPU:1"  # "/device:CPU:0" or "/GPU:0"
-    OUTPUT = Path("./outputs")
+    # Hyperparameters for the CNNs (see below for an idea of valid values)
+    PARAMS_CNN = {
+        "architecture": ["CNN"],
+        "filter_size": [4],
+        "act_func": ["elu"],
+        "dropout_rate": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+        "optimizer": ["Adam", "Adamax", "SGD", "RMSprop"],
+        "learning_rate": [0.001, 0.01, 0.1],
+    }
 
-    # Delete existing data
-    CLEAN_RNN = True
-    CLEAN_CNN = True
+    # Shared hyperparameters
+    TR, VL, TS = 0.90, 0.05, 0.05  # training, validation, test split
+    BATCH_SIZE = 128
+    EPOCHS = 100
+    PATIENCE = 3  # halt training if validation loss does not decrease for this many epochs
 
-    # Flags
-    ERRORS = "warn"
-    TRAIN_RNN = True
-    EVAL_RNN = True
-    TRAIN_CNN = True
-    EVAL_CNN = True
+    # Experiment configurations
+    DATA_PATH = "./data/full/"  # location of the unzipped data files
+    SEED = 0  # random seed for controlling random randomization
+    DEVICE_PT = "cuda:1"  # device for the Pytorch training/evaluation, "cpu" or "cuda:0"
+    DEVICE_TF = "/GPU:1"  # device for the TensorFlow training/evaluation, "/device:CPU:0" or "/GPU:0"
+    OUTPUT = Path("./outputs")  # location where experimental data is stored
+
+    # If True, the program will delete any existing output data it encounters
+    CLEAN_RNN = False
+    CLEAN_CNN = False
+
+    # Flags controlling what occurs in experiment
+    ERRORS = "warn"  # how to handle errors, "warn" or "raise"
+    TRAIN_RNN = True  # if True, will train the RNN models
+    EVAL_RNN = True  # if True, will evaluate the best RNN model
+    TRAIN_CNN = True  # if True, will train the CNN models
+    EVAL_CNN = True  # if True, will evaluate the best CNN model
+
+    # Verify parameters for the RNNs are valid
+    assert all(p in ("RNN", "LSTM", "GRU") for p in PARAMS_RNN["architecture"])
+    assert all(isinstance(p, int) for p in chain(PARAMS_RNN["hidden_size"], PARAMS_RNN["num_layers"]))
+    assert all(isinstance(p, float) for p in chain(PARAMS_RNN["learning_rate"], PARAMS_RNN["dropout"]))
+    assert all(isinstance(p, bool) for p in PARAMS_RNN["bidirectional"])
+    assert all(p in ("Adam", "Adamax", "SGD", "RMSprop") for p in PARAMS_RNN["optimizer"])
+
+    # Verify parameters for the CNNs are valid
+    assert all(p in ("CNN",) for p in PARAMS_CNN["architecture"])
+    assert all(isinstance(p, int) for p in PARAMS_CNN["filter_size"])
+    assert all(isinstance(p, float) for p in chain(PARAMS_CNN["learning_rate"], PARAMS_CNN["dropout_rate"]))
+    assert all(p in ("relu", "elu", "tanh") for p in PARAMS_CNN["act_func"])
+    assert all(p in ("Adam", "Adamax", "SGD", "RMSprop") for p in PARAMS_CNN["optimizer"])
 
     main()
