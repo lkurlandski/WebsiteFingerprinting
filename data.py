@@ -59,8 +59,11 @@ def get_all_data(path: tp.Union[Path, str]) -> tp.Tuple[np.ndarray, np.array]:
 
 
 class WFDataset(Dataset):
+    X: tp.List[tp.List[int]]
+    y: Tensor
+
     def __init__(self, X: np.ndarray, y: np.ndarray, condense: bool) -> None:
-        self.X = torch.tensor(X, dtype=torch.float32)
+        self.X = [self.condense_tensor(x) for x in X] if condense else X.tolist()
         self.y = torch.tensor(y, dtype=torch.int64)
         self.condense = condense
 
@@ -68,12 +71,10 @@ class WFDataset(Dataset):
         return self.y.shape[0]
 
     def __getitem__(self, index: int) -> tp.Tuple[Tensor, Tensor]:
-        x = self.condense_tensor(self.X[index]) if self.condense else self.X[index]
-        y = self.y[index]
-        return x, y
+        return torch.tensor(self.X[index], dtype=torch.float32), self.y[index]
 
     @staticmethod
-    def condense_tensor(x: Tensor) -> Tensor:
+    def condense_tensor(x: tp.Union[tp.List[int], np.ndarray, Tensor]) -> tp.List[int]:
         x_ = []
 
         previous = None
@@ -81,10 +82,10 @@ class WFDataset(Dataset):
 
         for i in x:
             if previous is None:
-                previous = i.item()
+                previous = int(i)
                 continue
 
-            current = i.item()
+            current = int(i)
             if previous == current:
                 count += 1
             else:
@@ -93,7 +94,7 @@ class WFDataset(Dataset):
 
             previous = current
 
-        return torch.tensor(x_, dtype=torch.float32)
+        return x_
 
 
 def collate_fn(
