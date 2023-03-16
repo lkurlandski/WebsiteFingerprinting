@@ -136,6 +136,9 @@ def rnns(
             path = OUTPUT.joinpath(*[str(combo[idx]) for idx in order.values()])
             if path.exists() and CLEAN_RNN:
                 shutil.rmtree(path)
+            elif (path / "report.json").exists():
+                print("SKIPPING. Use CLEAN_RNN=True to clean out old data.")
+                continue
             path_models = path / "models"
             path_reports = path / "reports"
             if TRAIN_RNN:
@@ -202,7 +205,8 @@ def cnns(
             path = OUTPUT.joinpath(*[str(combo[idx]) for idx in order.values()])
             if path.exists() and CLEAN_CNN:
                 shutil.rmtree(path)
-
+            elif (path / "report.json").exists():
+                print("SKIPPING. Use CLEAN_CNN=True to clean out old data.")
             path.mkdir(parents=True)
             if TRAIN_CNN:
                 vl = (vl_X, vl_y) if (vl_X is not None and vl_y is not None) else None
