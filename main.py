@@ -279,8 +279,8 @@ if __name__ == "__main__":
     # Shared hyperparameters
     TR, VL, TS = 0.90, 0.05, 0.05  # training, validation, test split
     BATCH_SIZE = 128
-    EPOCHS = 100
-    PATIENCE = 3  # halt training if validation loss does not decrease for this many epochs
+    EPOCHS = 50
+    PATIENCE = 10  # halt training if validation loss does not decrease for this many epochs
 
     # Experiment configurations
     DATA_PATH = "./data/full/"  # location of the unzipped data files
