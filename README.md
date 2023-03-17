@@ -46,7 +46,7 @@ Please the code and comments contained within the __main__ clause in main.py car
                      
                         -- "{EPOCH}.pt"
                         
-                     -- reports.json
+                     -- report.json
                      
          -- "CNN"
          
