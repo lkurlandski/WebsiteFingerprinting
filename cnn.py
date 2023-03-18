@@ -72,7 +72,7 @@ class CNN:
 
         opti = optimizer
         metrics = [
-                tf.keras.metrics.Accuracy(),
+                "accuracy",
                 tf.keras.metrics.AUC(),
                 tf.keras.metrics.Precision(),
                 tf.keras.metrics.Recall(),
@@ -86,11 +86,9 @@ class CNN:
         Y_train,
         batch_size,
         epochs,
-        verbose=1,
-        validation_split=None,
-        validation_data=None,
-        board=True,
+        validation_data,
         patience=None,
+        board=False,
     ):
         """
         :param X_train: a numpy ndarray of dimension (k x n) containing
@@ -125,8 +123,7 @@ class CNN:
             Y_train,
             batch_size=batch_size,
             epochs=epochs,
-            verbose=verbose,
-            validation_split=validation_split,
+            verbose=2,
             validation_data=validation_data,
             callbacks=callbacks,
         )

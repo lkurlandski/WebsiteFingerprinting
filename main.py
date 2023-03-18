@@ -209,9 +209,8 @@ def cnns(
                 print("SKIPPING. Use CLEAN_CNN=True to clean out old data.")
             path.mkdir(parents=True)
             if TRAIN_CNN:
-                vl = (vl_X, vl_y) if (vl_X is not None and vl_y is not None) else None
                 with tf.device(DEVICE_TF):
-                    history = model.fit(tr_X, tr_y, BATCH_SIZE, EPOCHS, validation_data=vl, patience=PATIENCE)
+                    history = model.fit(tr_X, tr_y, BATCH_SIZE, EPOCHS, (vl_X, vl_y), PATIENCE)
                 with open(path / "history.json", "w", encoding="utf-8") as handle:
                     json.dump(history.history, handle, indent=4)
             if EVAL_CNN:
@@ -269,9 +268,9 @@ if __name__ == "__main__":
     # Hyperparameters for the CNNs (see below for an idea of valid values)
     PARAMS_CNN = {
         "architecture": ["CNN"],
-        "filter_size": [4],
+        "filter_size": [2, 4, 8, 16, 32],
         "act_func": ["elu"],
-        "dropout_rate": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+        "dropout_rate": [0.0],
         "optimizer": ["Adam", "Adamax", "SGD", "RMSprop"],
         "learning_rate": [0.001, 0.01, 0.1],
     }
@@ -295,8 +294,8 @@ if __name__ == "__main__":
 
     # Flags controlling what occurs in experiment
     ERRORS = "warn"  # how to handle errors, "warn" or "raise"
-    TRAIN_RNN = True  # if True, will train the RNN models
-    EVAL_RNN = True  # if True, will evaluate the best RNN model
+    TRAIN_RNN = False  # if True, will train the RNN models
+    EVAL_RNN = False  # if True, will evaluate the best RNN model
     TRAIN_CNN = True  # if True, will train the CNN models
     EVAL_CNN = True  # if True, will evaluate the best CNN model
 
