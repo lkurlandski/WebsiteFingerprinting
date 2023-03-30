@@ -23,7 +23,6 @@ dependencies:
   - babel=2.11.0=py38h06a4308_0
   - backcall=0.2.0=pyhd3eb1b0_0
   - beautifulsoup4=4.11.1=py38h06a4308_0
-  - black=23.1.0=py38h578d9bd_0
   - blas=1.0=mkl
   - bleach=4.1.0=pyhd3eb1b0_0
   - blinker=1.4=py38h06a4308_0
